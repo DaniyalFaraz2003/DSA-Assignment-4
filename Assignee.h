@@ -40,6 +40,9 @@ public:
 			tasklist.pop();
 		}
 	}
+	void setId(const string& id) {
+		this->id = id;
+	}
 	bool noTasksAssigned() { return tasklist.empty(); }
 	void assignTask(const Task& t) { 
 		if (!searchTask(t))

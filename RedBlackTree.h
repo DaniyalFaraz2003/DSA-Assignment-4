@@ -9,6 +9,9 @@
 #include "List.h"
 using namespace std;
 
+template <class T>
+class RedBlackTree;
+
 template<class T>
 struct Node {
     T data;
@@ -17,10 +20,22 @@ struct Node {
     Node<T>(T data, char c) : data(data), c(c), l(nullptr), r(nullptr), p(nullptr) {}
     virtual bool isNil() { return false; }
 };
+template<>
+struct Node<Task> {
+    Task data;
+    Node* l, * r, * p;
+    char c;
+    RedBlackTree<Task>* tree;
+
+    Node(Task data, char c) : data(data), c(c), l(nullptr), r(nullptr), p(nullptr), tree(nullptr) {}
+    virtual bool isNil() { return false; }
+
+};
 template<class T>
-struct NIL : Node<T> {
+struct NIL : public Node<T> {
     NIL(T data, char c) : Node<T>(data, c) {}
     bool isNil() { return true; }
+
 };
 
 template <class T>
@@ -37,11 +52,15 @@ private:
     void getData(Node<T>* root, ArrayBasedList<T>& res);
 
     //All the specializations
-    void inorderAssignee(Node<Assignee>* root);
-    void inorderTask(Node<Task>* root);
+    void inorderAssignee(Node<Assignee>* root, stringstream& ss);
+    void inorderTask(Node<Task>* root, stringstream& ss);
+    void getTaskData(Node<Task>* root, ArrayBasedList<Task>& res);
 
 public:
     RedBlackTree();
+    bool isNil() {
+        return root == nullptr || root->isNil();
+    }
     void insertNode(T data);
     void deleteNode(T data);
     bool exists(T data);
@@ -50,10 +69,17 @@ public:
     void getTreeData(ArrayBasedList<T>& res);
 
     // All the specializations are here
-    void displayAssignee();
-    void displayTask();
+    void getAllTasks(ArrayBasedList<Task>& res);
+    void deleteTask(int taskId);
+    Task findMaxPriority();
+    Node<Task>* preOrderSearch(int id);
+    void insertNode(const Task& data, char insertFactor);
+    void displayAssignee(stringstream& ss);
+    void displayTask(stringstream& ss);
     Node<Assignee>* search(string data);
+    Node<Task>* search(const int taskId);
     bool exists(string data);
+
 };
 
 template<class T>
@@ -133,6 +159,170 @@ void RedBlackTree<T>::insertNode(T data) {
         root = newNode;
     }
     else if (newNode->data < prev->data) {
+        delete prev->l;
+        prev->l = newNode;
+    }
+    else {
+        delete prev->r;
+        prev->r = newNode;
+    }
+    restructureInsert(newNode);
+}
+template<>
+void RedBlackTree<Task>::getAllTasks(ArrayBasedList<Task>& res)
+{
+    getTaskData(root, res);
+}
+template<>
+void RedBlackTree<Task>::deleteTask(int taskId)
+{
+    Node<Task>* n = search(taskId);
+    if (n == nullptr || n->isNil()) return;
+    if (n->tree && !(n->tree->isNil())) {
+        n->tree->deleteTask(taskId);
+        if (n->tree->isNil()) {
+            deleteTask(n->data.getId());
+        }
+        return;
+    }
+
+    Node<Task>* temp = n;
+    char temp_c = temp->c;
+
+
+    Node<Task>* x;
+    if ((n->l)->isNil()) {
+        delete n->l;
+        x = n->r;
+        moveTree(n, n->r);
+    }
+    else if ((n->r)->isNil()) {
+        delete n->r;
+        x = n->l;
+        moveTree(n, n->l);
+    }
+    else {
+        temp = n->l;
+        while (!(temp->r)->isNil()) temp = temp->r;
+        temp_c = temp->c;
+        x = temp->l;
+        delete temp->r;
+        if (temp->p == n) {
+            x->p = temp;
+        }
+        else {
+            moveTree(temp, temp->l);
+            temp->l = n->l;
+            temp->l->p = temp;
+        }
+
+        moveTree(n, temp);
+        temp->r = n->r;
+        temp->r->p = temp;
+        temp->c = n->c;
+
+        delete n;
+    }
+
+    if (temp_c == 'b') {
+        restructureDelete(x);
+    }
+}
+template<>
+Task RedBlackTree<Task>::findMaxPriority()
+{
+    if (root == nullptr) return Task();
+    Node<Task>* current = root;
+    while (!(current -> l) -> isNil()) {
+        current = current->l;
+    }
+    if (current->tree) {
+        current = current->tree->root;
+        while (!(current->l)->isNil()) {
+            current = current->l;
+        }
+    }
+    return current->data;
+}
+template<>
+Node<Task>* RedBlackTree<Task>::preOrderSearch(int id)
+{
+    if (root == nullptr) return nullptr;
+    ArrayBasedList<Node<Task>*> st;
+    st.push(root);
+    while (!st.empty()) {
+        Node<Task>* node = st.back();
+        if (id == node->data.getId()) return node;
+        else {
+            st.pop();
+            if (!(node->r->isNil())) {
+                st.push(node->r);
+            }
+            if (!(node->l->isNil())) {
+                st.push(node->l);
+            }
+        }
+    }
+    return nullptr;
+}
+
+template<>
+Node<Task>* RedBlackTree<Task>::search(const int taskId)
+{
+    if (root == nullptr || root->isNil()) return nullptr;
+    ArrayBasedList<Node<Task>*> st;
+    st.push(root);
+    while (!st.empty()) {
+        Node<Task>* node = st.back();
+        if (node->tree && !(node->tree->root->isNil())) {
+            Node<Task>* innerNode = node->tree->preOrderSearch(taskId);
+            if (innerNode && !(innerNode->isNil())) return node;
+        }
+        else if (node->data.getId() == taskId) return node;
+        st.pop();
+        if (!(node->r->isNil())) {
+            st.push(node->r);
+        }
+        if (!(node->l->isNil())) {
+            st.push(node->l);
+        }
+    }
+    return nullptr;
+}
+
+template<>
+void RedBlackTree<Task>::insertNode(const Task& data, char insertFactor) {
+    Node<Task>* newNode = new Node<Task>(data, 'r');
+    newNode->l = new NIL<Task>(Task(), 'b');
+    newNode->r = new NIL<Task>(Task(), 'b');
+    Node<Task>* prev = nullptr;
+    Node<Task>* current = root;
+    while (!current->isNil()) {
+        prev = current;
+        if (data.getPriority() < current->data.getPriority()) {
+            current = current->l;
+        }
+        else if (data.getPriority() > current->data.getPriority()) {
+            current = current->r;
+        }
+        else {
+            if (current->tree != nullptr) {
+                current->tree->insertNode(data);
+            }
+            else {
+                current->tree = new RedBlackTree<Task>;
+                current->tree->insertNode(current->data);
+                current->tree->insertNode(data);
+            }
+            return;
+        }
+    }
+    newNode->p = prev;
+    if (prev == nullptr) {
+        delete root;
+        root = newNode;
+    }
+    else if (newNode->data.getPriority() < prev->data.getPriority()) {
         delete prev->l;
         prev->l = newNode;
     }
@@ -352,14 +542,14 @@ inline void RedBlackTree<T>::getTreeData(ArrayBasedList<T>& res)
 }
 
 template<>
-inline void RedBlackTree<Assignee>::displayAssignee()
+inline void RedBlackTree<Assignee>::displayAssignee(stringstream& ss)
 {
-    inorderAssignee(root);
+    inorderAssignee(root, ss);
 }
 
 template<>
-inline void RedBlackTree<Task>::displayTask() {
-    inorderTask(root);
+inline void RedBlackTree<Task>::displayTask(stringstream& ss) {
+    inorderTask(root, ss);
 }
 
 template<>
@@ -378,6 +568,7 @@ Node<Assignee>* RedBlackTree<Assignee>::search(string data) {
     }
     return current;
 }
+
 template<class T>
 bool RedBlackTree<T>::exists(T data) {
     Node<T>* res = search(data);
@@ -400,22 +591,41 @@ void RedBlackTree<T>::inorder(Node<T>* root) {
 }
 
 template<>
-void RedBlackTree<Assignee>::inorderAssignee(Node<Assignee>* root) {
+void RedBlackTree<Assignee>::inorderAssignee(Node<Assignee>* root, stringstream& ss) {
     if (!root->isNil()) {
-        if (!(root->l)->isNil()) inorderAssignee(root->l);
+        if (!(root->l)->isNil()) inorderAssignee(root->l, ss);
         string color = root->c == 'r' ? "red" : "black";
-        cout << root->data.getId() << " (" << color << ")\n";
-        if (!(root->r)->isNil()) inorderAssignee(root->r);
+        ss << root->data.getId() << " (" << color << ")\n";
+        if (!(root->r)->isNil()) inorderAssignee(root->r, ss);
     }
 }
 
 template<>
-void RedBlackTree<Task>::inorderTask(Node<Task>* root) {
+void RedBlackTree<Task>::inorderTask(Node<Task>* root, stringstream& ss) {
     if (!root->isNil()) {
-        if (!(root->l)->isNil()) inorderTask(root->l);
-        string color = root->c == 'r' ? "red" : "black";
-        cout << root->data.getId() << " (" << color << ")\n";
-        if (!(root->r)->isNil()) inorderTask(root->r);
+        if (!(root->l)->isNil()) inorderTask(root->l, ss);
+        if (root->tree) {
+            root->tree->inorderTask(root->tree->root, ss);
+        }
+        else {
+            string color = root->c == 'r' ? "red" : "black";
+            ss << root->data.getId() << " (" << color << ")\n";
+        }
+        if (!(root->r)->isNil()) inorderTask(root->r, ss);
+    }
+}
+template<>
+void RedBlackTree<Task>::getTaskData(Node<Task>* root, ArrayBasedList<Task>& res)
+{
+    if (!root->isNil()) {
+        if (!(root->l)->isNil()) getTaskData(root->l, res);
+        if (root->tree) {
+            root->tree->getTaskData(root->tree->root, res);
+        }
+        else {
+            res.push(root->data);
+        }
+        if (!(root->l)->isNil()) getTaskData(root->r, res);
     }
 }
 template<class T>
